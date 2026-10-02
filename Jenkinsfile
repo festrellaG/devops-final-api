@@ -1,4 +1,4 @@
-// Hito 3: integración inicial. Sonar, Docker Build, ECR y webhook vendrán después.
+// Hito 4, paso 1: Sonar secuencial. Paralelismo y Quality Gate vendrán después.
 pipeline {
     agent any
 
@@ -53,6 +53,21 @@ pipeline {
                 stage('Prueba del paquete') {
                     steps {
                         sh 'npm run test:package'
+                    }
+                }
+            }
+        }
+
+        stage('Sonar') {
+            steps {
+                // Fuera del contenedor Node: el nodo Jenkins ya alcanza sonarqube:9000.
+                sh 'test -s coverage/lcov.info'
+                script {
+                    def scannerHome = tool 'sonar-scanner'
+                    withSonarQubeEnv('sonarqube-server') {
+                        withEnv(["SCANNER_HOME=${scannerHome}"]) {
+                            sh '"$SCANNER_HOME/bin/sonar-scanner"'
+                        }
                     }
                 }
             }
