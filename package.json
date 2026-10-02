@@ -1,0 +1,42 @@
+{
+  "name": "devops-final-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de tareas para practicar CI/CD con Jenkins, SonarQube y Amazon ECR",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/app.js && node --check src/server.js && node --check src/error-handler.js",
+    "test": "node --test test/*.test.js",
+    "test:coverage": "c8 node --test test/*.test.js",
+    "build": "npm run check && node scripts/build.js",
+    "test:package": "node scripts/test-package.js"
+  },
+  "c8": {
+    "all": true,
+    "include": [
+      "src/**/*.js"
+    ],
+    "exclude": [
+      "src/server.js"
+    ],
+    "reporter": [
+      "text",
+      "lcov"
+    ],
+    "check-coverage": true,
+    "lines": 80,
+    "statements": 80,
+    "functions": 80,
+    "branches": 80
+  },
+  "dependencies": {
+    "express": "5.2.1"
+  },
+  "devDependencies": {
+    "c8": "12.0.0"
+  }
+}
