@@ -6,6 +6,7 @@ pipeline {
         APP_NAME = 'devops-final-api'
         AWS_REGION = 'us-east-1'
         ECR_REPOSITORY = 'devops-final-api'
+        AWS_CLI_IMAGE = 'amazon/aws-cli:latest'
     }
 
     options {
@@ -193,7 +194,7 @@ pipeline {
                                 -e AWS_ACCESS_KEY_ID \\
                                 -e AWS_SECRET_ACCESS_KEY \\
                                 -e AWS_DEFAULT_REGION="$AWS_REGION" \\
-                                amazon/aws-cli:2 sts get-caller-identity --query Account --output text''',
+                                "$AWS_CLI_IMAGE" sts get-caller-identity --query Account --output text''',
                             returnStdout: true
                         ).trim()
                         env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
@@ -208,7 +209,7 @@ if docker run --rm \\
     -e AWS_ACCESS_KEY_ID \\
     -e AWS_SECRET_ACCESS_KEY \\
     -e AWS_DEFAULT_REGION="$AWS_REGION" \\
-    amazon/aws-cli:2 ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>"$error_file"; then
+    "$AWS_CLI_IMAGE" ecr describe-repositories --repository-names "$ECR_REPOSITORY" >/dev/null 2>"$error_file"; then
     echo "El repositorio ECR $ECR_REPOSITORY ya existe."
 else
     describe_status=$?
@@ -217,7 +218,7 @@ else
             -e AWS_ACCESS_KEY_ID \\
             -e AWS_SECRET_ACCESS_KEY \\
             -e AWS_DEFAULT_REGION="$AWS_REGION" \\
-            amazon/aws-cli:2 ecr create-repository \\
+            "$AWS_CLI_IMAGE" ecr create-repository \\
                 --repository-name "$ECR_REPOSITORY" \\
                 --image-tag-mutability IMMUTABLE \\
                 --image-scanning-configuration scanOnPush=true \\
@@ -232,7 +233,7 @@ docker run --rm \\
     -e AWS_ACCESS_KEY_ID \\
     -e AWS_SECRET_ACCESS_KEY \\
     -e AWS_DEFAULT_REGION="$AWS_REGION" \\
-    amazon/aws-cli:2 ecr get-login-password --region "$AWS_REGION" \\
+    "$AWS_CLI_IMAGE" ecr get-login-password --region "$AWS_REGION" \\
     | docker login --username AWS --password-stdin "$ECR_REGISTRY"
 docker tag "$APP_NAME:$IMAGE_TAG" "$IMAGE_URI"
 docker push "$IMAGE_URI"
