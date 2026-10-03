@@ -9,7 +9,8 @@ No contiene autenticación ni base de datos: usar únicamente datos de laborator
 - Hito 1: especificación acordada en [spec.md](spec.md).
 - Hito 2: API, pruebas, cobertura y arranque validados localmente en WSL.
 - Hito 3, parte local: Build y prueba del paquete completados.
-- Pendiente: publicar el código y configurar Jenkins, SonarQube, Docker, ECR y webhook.
+- CI/CD: webhook GitHub, pruebas, análisis SonarQube, Quality Gate, Docker build y publicación en ECR completados y validados en Jenkins.
+- Pendiente opcional: implementar una Global Shared Library de Jenkins.
 - No hace falta encender EC2 para los pasos de esta página.
 
 ## 1. Preparar el entorno local
@@ -215,8 +216,74 @@ La implementación está en [scripts/build.js](scripts/build.js) y
 [scripts/test-package.js](scripts/test-package.js). El artefacto está ignorado
 por Git: en un clon nuevo se genera con Build, no se descarga del repositorio.
 
-## Continuación del hito 3 (pendiente)
+## 8. Configurar el webhook GitHub → Jenkins
 
-Revisar el Build local y, con confirmación, publicar el código y crear un job
-nuevo de Jenkins para Get Source y Build. Sonar y ECR vendrán después.
-Ni este README ni la especificación autorizan commits, pushes o creación automática de recursos AWS.
+El repositorio usa un webhook para que cada push a `main` inicie el job. El
+webhook no es un stage del pipeline: GitHub envía un POST a Jenkins y el plugin
+GitHub relaciona el evento con el job.
+
+### Jenkins
+
+1. En **Manage Jenkins → Plugins → Installed**, confirma que **GitHub plugin** esté habilitado.
+2. En el job `proyecto-final-api`, confirma **Pipeline script from SCM**, el repositorio `https://github.com/festrellaG/devops-final-api.git`, la rama `*/main` y el script `Jenkinsfile`.
+3. En **Configure → Build Triggers**, activa **GitHub hook trigger for GITScm polling**. El Jenkinsfile también declara `githubPush()`.
+
+### GitHub
+
+1. En el repositorio, abre **Settings → Webhooks → Add webhook**.
+2. Configura **Payload URL** como `http://IP_PUBLICA_ACTUAL_EC2:8090/github-webhook/`.
+3. Selecciona `application/json`, **Just the push event** y deja el webhook activo.
+4. Guarda y revisa **Recent Deliveries**. La respuesta `200` y un build de Jenkins con causa **Started by GitHub push** confirman la entrega y el trigger. La consola debe mostrar el SHA del commit enviado.
+
+La ruta `/github-webhook/` es el endpoint del plugin de Jenkins, no un alias
+libre. La URL del laboratorio usa HTTP, así que la opción de verificación SSL de
+GitHub no aplica; HTTP no cifra el payload. Si se configura HTTPS, mantener la
+verificación SSL habilitada y usar un certificado confiable. Deshabilitar SSL no
+soluciona errores de conexión.
+
+### IP pública dinámica de EC2
+
+La EC2 usa una IPv4 pública asignada automáticamente. Después de **detener e
+iniciar** la instancia, esa IP puede cambiar. Consulta la IPv4 actual en los
+detalles de la instancia y actualiza el **Payload URL** del webhook si cambió.
+También verifica que Jenkins responda en `http://IP_PUBLICA_ACTUAL_EC2:8090`.
+El Security Group debe permitir TCP `8090` para la entrega de GitHub y el acceso
+administrativo autorizado. Si una entrega falla, primero confirma IP, estado de
+Jenkins y regla de red; luego usa **Redeliver** en GitHub. GitHub no reintenta
+automáticamente una entrega fallida.
+
+Si configuraste una **Jenkins URL** externa en **Manage Jenkins → System**,
+actualízala cuando cambie la IP para que los enlaces generados por Jenkins sigan
+apuntando a la instancia actual. El webhook de SonarQube usa la dirección interna
+de Docker `http://jenkins:8080/sonarqube-webhook/` y no cambia con la IP pública.
+
+## 9. Credenciales AWS y publicación en ECR
+
+El Jenkinsfile define `AWS_REGION=us-east-1` y `ECR_REPOSITORY=devops-final-api`.
+La cuenta AWS se obtiene con STS durante la etapa de publicación; no se escribe
+su número ni una clave en el repositorio.
+
+En **Manage Jenkins → Credentials → System → Global credentials**, agrega dos
+credenciales de tipo **Secret text**:
+
+| ID en Jenkins | Secreto |
+| --- | --- |
+| `aws-access-key-id` | Access key ID de un usuario/rol IAM del laboratorio. |
+| `aws-secret-access-key` | Secret access key correspondiente. |
+
+El Jenkinsfile las enlaza solamente dentro de `Publish to ECR` mediante
+`withCredentials`. No pegues los valores en el Jenkinsfile, README, logs ni
+capturas. Para un entorno permanente, es preferible usar un IAM role asociado a
+la EC2 en lugar de claves de larga duración.
+
+La identidad necesita `ecr:GetAuthorizationToken`, `ecr:DescribeRepositories`,
+`ecr:CreateRepository` y permisos para subir capas e imágenes (`ecr:BatchCheckLayerAvailability`,
+`ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload` y
+`ecr:PutImage`). Limita los permisos de publicación al repositorio previsto
+cuando sea posible. Si el repositorio no existe, el pipeline lo crea; luego
+publica una etiqueta basada en el número de build y el SHA corto. El éxito se
+confirma con `Finished: SUCCESS` y la etiqueta visible en ECR.
+
+ECR almacena las imágenes y puede generar cargos por almacenamiento. Revisa el
+presupuesto y elimina imágenes antiguas según una política acordada; apagar la
+EC2 no elimina el repositorio ni sus imágenes.
