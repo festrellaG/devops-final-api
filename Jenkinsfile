@@ -1,4 +1,4 @@
-// Hito 4, paso 2: Build y Sonar en paralelo. Quality Gate vendrá después.
+// Hito 4, paso 3: Build y Sonar en paralelo, seguidos de Quality Gate.
 pipeline {
     agent any
 
@@ -78,6 +78,15 @@ pipeline {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                // Requiere el webhook de SonarQube hacia /sonarqube-webhook/ en Jenkins.
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
